@@ -13,10 +13,15 @@ import (
 	"boot.dev/linko/internal/store"
 )
 
-func requestLogger(logger *log.Logger) func(next http.Handler) http.Handler {
+func requestLogger(accessLogger *log.Logger, standardLogger *log.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.Printf("Served request: %s %s", r.Method, r.URL.Path)
+			if accessLogger != nil {
+				accessLogger.Printf("Served request: %s %s", r.Method, r.URL.Path)
+			}
+			if standardLogger != nil {
+				standardLogger.Printf("Served request: %s %s", r.Method, r.URL.Path)
+			}
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -50,7 +55,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		return 1
 	}
 
-	s := newServer(*st, httpPort, cancel, accessLogger)
+	s := newServer(*st, httpPort, cancel, accessLogger, standardLogger)
 	accessLogger.Printf("Linko is running on http://localhost:%d", httpPort)
 
 	var serverErr error
