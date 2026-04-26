@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -13,18 +14,29 @@ import (
 	"boot.dev/linko/internal/store"
 )
 
-func requestLogger(accessLogger *log.Logger, standardLogger *log.Logger) func(next http.Handler) http.Handler {
+func requestLogger(logger *log.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if accessLogger != nil {
-				accessLogger.Printf("Served request: %s %s", r.Method, r.URL.Path)
-			}
-			if standardLogger != nil {
-				standardLogger.Printf("Served request: %s %s", r.Method, r.URL.Path)
+			if logger != nil {
+				logger.Printf("Served request: %s %s", r.Method, r.URL.Path)
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func initializeLogger() (*log.Logger, *os.File, error) {
+	logFile := os.Getenv("LINKO_LOG_FILE")
+	if logFile == "" {
+		// only stderr
+		return log.New(os.Stderr, "", log.LstdFlags), nil, nil
+	}
+	f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+	if err != nil {
+		return nil, nil, err
+	}
+	mw := io.MultiWriter(os.Stderr, f)
+	return log.New(mw, "", log.LstdFlags), f, nil
 }
 
 func main() {
@@ -35,28 +47,28 @@ func main() {
 	dataDir := flag.String("data", "./data", "directory to store data")
 	flag.Parse()
 
-	// create two non-global loggers
-	accessFile, err := os.OpenFile("linko.access.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	logger, f, err := initializeLogger()
 	if err != nil {
-		accessFile = os.Stderr
+		log.Fatalf("failed to initialize logger: %v", err)
 	}
-	accessLogger := log.New(accessFile, "INFO: ", log.LstdFlags)
-	standardLogger := log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
+	if f != nil {
+		defer f.Close()
+	}
 
-	status := run(ctx, cancel, *httpPort, *dataDir, standardLogger, accessLogger)
-	standardLogger.Println("Linko is shutting down")
+	status := run(ctx, cancel, *httpPort, *dataDir, logger)
+	logger.Println("Linko is shutting down")
 	os.Exit(status)
 }
 
-func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string, standardLogger *log.Logger, accessLogger *log.Logger) int {
-	st, err := store.New(standardLogger, dataDir)
+func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string, logger *log.Logger) int {
+	st, err := store.New(logger, dataDir)
 	if err != nil {
-		standardLogger.Printf("failed to create store: %v", err)
+		logger.Printf("failed to create store: %v", err)
 		return 1
 	}
 
-	s := newServer(*st, httpPort, cancel, accessLogger, standardLogger)
-	accessLogger.Printf("Linko is running on http://localhost:%d", httpPort)
+	s := newServer(*st, httpPort, cancel, logger)
+	logger.Printf("Linko is running on http://localhost:%d", httpPort)
 
 	var serverErr error
 	go func() {
@@ -68,11 +80,11 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		standardLogger.Printf("failed to shutdown server: %v", err)
+		logger.Printf("failed to shutdown server: %v", err)
 		return 1
 	}
 	if serverErr != nil {
-		standardLogger.Printf("server error: %v", serverErr)
+		logger.Printf("server error: %v", serverErr)
 		return 1
 	}
 	return 0
