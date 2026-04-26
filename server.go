@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -15,9 +16,10 @@ type server struct {
 	httpServer *http.Server
 	store      store.Store
 	cancel     context.CancelFunc
+	logger     *log.Logger
 }
 
-func newServer(store store.Store, port int, cancel context.CancelFunc) *server {
+func newServer(store store.Store, port int, cancel context.CancelFunc, logger *log.Logger) *server {
 	mux := http.NewServeMux()
 
 	srv := &http.Server{
@@ -29,13 +31,14 @@ func newServer(store store.Store, port int, cancel context.CancelFunc) *server {
 		httpServer: srv,
 		store:      store,
 		cancel:     cancel,
+		logger:     logger,
 	}
 
 	mux.HandleFunc("GET /", s.handlerIndex)
-	mux.Handle("POST /api/login", requestLogger(s.authMiddleware(http.HandlerFunc(s.handlerLogin))))
-	mux.Handle("POST /api/shorten", requestLogger(s.authMiddleware(http.HandlerFunc(s.handlerShortenLink))))
-	mux.Handle("GET /api/stats", requestLogger(s.authMiddleware(http.HandlerFunc(s.handlerStats))))
-	mux.Handle("GET /api/urls", requestLogger(s.authMiddleware(http.HandlerFunc(s.handlerListURLs))))
+	mux.Handle("POST /api/login", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerLogin))))
+	mux.Handle("POST /api/shorten", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerShortenLink))))
+	mux.Handle("GET /api/stats", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerStats))))
+	mux.Handle("GET /api/urls", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerListURLs))))
 	mux.HandleFunc("GET /{shortCode}", s.handlerRedirect)
 	mux.HandleFunc("POST /admin/shutdown", s.handlerShutdown)
 
