@@ -54,7 +54,6 @@ func (s *server) validatePassword(password, stored string) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		s.logger.Error("error validating password", slog.Any("err", err))
 		return false, err
 	}
 	return true, nil
