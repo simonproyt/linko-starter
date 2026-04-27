@@ -35,13 +35,20 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 		logger:     logger,
 	}
 
-	mux.Handle("GET /", requestLogger(s.logger)(http.HandlerFunc(s.handlerIndex)))
-	mux.Handle("POST /api/login", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerLogin))))
-	mux.Handle("POST /api/shorten", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerShortenLink))))
-	mux.Handle("GET /api/stats", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerStats))))
-	mux.Handle("GET /api/urls", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerListURLs))))
-	mux.HandleFunc("GET /{shortCode}", s.handlerRedirect)
-	mux.HandleFunc("POST /admin/shutdown", s.handlerShutdown)
+	mux.Handle("/api/login", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerLogin))))
+	mux.Handle("/api/shorten", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerShortenLink))))
+	mux.Handle("/api/stats", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerStats))))
+	mux.Handle("/api/urls", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerListURLs))))
+	mux.HandleFunc("/admin/shutdown", s.handlerShutdown)
+
+	// Root: exact "/" serves index; anything else at root level is treated as a short code redirect.
+	mux.Handle("/", requestLogger(s.logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			s.handlerIndex(w, r)
+			return
+		}
+		s.handlerRedirect(w, r)
+	})))
 
 	return s
 }

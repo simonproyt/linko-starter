@@ -110,7 +110,7 @@ func (s *Store) Lookup(_ context.Context, short string) (string, error) {
 	}
 	if err != nil {
 		if s.logger != nil {
-			s.logger.Error(fmt.Sprintf("failed to read %s: %v", shortcodeFilepath, err))
+			s.logger.Error("failed to read file", slog.String("path", shortcodeFilepath), slog.Any("err", err))
 		} else {
 			fmt.Printf("failed to read %s: %v\n", shortcodeFilepath, err)
 		}

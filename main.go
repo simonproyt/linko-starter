@@ -19,7 +19,12 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if logger != nil {
-				logger.Info(fmt.Sprintf("Served request: %s %s", r.Method, r.URL.Path))
+				msg := fmt.Sprintf("Served request: %s %s", r.Method, r.URL.Path)
+				logger.Info(msg,
+					slog.String("method", r.Method),
+					slog.String("path", r.URL.Path),
+					slog.String("client_ip", r.RemoteAddr),
+				)
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -63,19 +68,19 @@ func main() {
 	}
 
 	status := run(ctx, cancel, *httpPort, *dataDir, logger)
-	logger.Debug(fmt.Sprintf("Linko is shutting down"))
+	logger.Debug("Linko is shutting down")
 	os.Exit(status)
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string, logger *slog.Logger) int {
 	st, err := store.New(logger, dataDir)
 	if err != nil {
-		logger.Error(fmt.Sprintf("failed to create store: %v", err))
+		logger.Error("failed to create store", slog.Any("err", err))
 		return 1
 	}
 
 	s := newServer(*st, httpPort, cancel, logger)
-	logger.Debug(fmt.Sprintf("Linko is running on http://localhost:%d", httpPort))
+	logger.Debug("Linko is running", slog.Int("port", httpPort))
 
 	var serverErr error
 	go func() {
@@ -87,11 +92,11 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		logger.Error(fmt.Sprintf("failed to shutdown server: %v", err))
+		logger.Error("failed to shutdown server", slog.Any("err", err))
 		return 1
 	}
 	if serverErr != nil {
-		logger.Error(fmt.Sprintf("server error: %v", serverErr))
+		logger.Error("server error", slog.Any("err", serverErr))
 		return 1
 	}
 	return 0
