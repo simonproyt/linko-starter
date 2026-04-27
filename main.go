@@ -19,8 +19,7 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if logger != nil {
-				msg := fmt.Sprintf("Served request: %s %s", r.Method, r.URL.Path)
-				logger.Info(msg,
+				logger.Info("Served request",
 					slog.String("method", r.Method),
 					slog.String("path", r.URL.Path),
 					slog.String("client_ip", r.RemoteAddr),
