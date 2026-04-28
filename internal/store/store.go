@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"boot.dev/linko/internal/linkoerr"
 )
 
 type ShortURL struct {
@@ -93,7 +95,8 @@ func (s *Store) walk(ctx context.Context, ch chan<- ShortURL) {
 		if !e.IsDir() {
 			long, err := s.Lookup(ctx, e.Name())
 			if err != nil {
-				ch <- ShortURL{Err: fmt.Errorf("read %s: %w", filepath.Join(s.dir, e.Name()), err)}
+				// attach path context to the error without logging it here
+				ch <- ShortURL{Err: linkoerr.WithAttrs(err, "path", filepath.Join(s.dir, e.Name()))}
 				continue
 			}
 			ch <- ShortURL{ShortCode: e.Name(), LongURL: long}
