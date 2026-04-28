@@ -106,8 +106,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	st, err := store.New(logger, dataDir)
 	if err != nil {
 		logger.Error("failed to create store",
-			slog.String("error", err.Error()),
-			slog.Any("error_detail", err),
+			slog.Any("error", err),
 		)
 		return 1
 	}
@@ -126,15 +125,13 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 
 	if err := s.shutdown(shutdownCtx); err != nil {
 		logger.Error("failed to shutdown server",
-			slog.String("error", err.Error()),
-			slog.Any("error_detail", err),
+			slog.Any("error", err),
 		)
 		return 1
 	}
 	if serverErr != nil {
 		logger.Error("server error",
-			slog.String("error", serverErr.Error()),
-			slog.Any("error_detail", serverErr),
+			slog.Any("error", serverErr),
 		)
 		return 1
 	}
