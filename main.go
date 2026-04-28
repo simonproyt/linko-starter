@@ -15,6 +15,16 @@ import (
 	"boot.dev/linko/internal/store"
 )
 
+func replaceAttr(groups []string, a slog.Attr) slog.Attr {
+	// Preserve time attribute and others unchanged
+	if a.Key == "err" || a.Key == "error" {
+		if err, ok := a.Value.Any().(error); ok {
+			return slog.String(a.Key, fmt.Sprintf("%+v", err))
+		}
+	}
+	return a
+}
+
 func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,8 +52,8 @@ func initializeLogger() (*slog.Logger, *os.File, error) {
 		return nil, nil, err
 	}
 	// stderr: DEBUG and above; file: INFO and above
-	debugHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
-	infoHandler := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo})
+	debugHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug, ReplaceAttr: replaceAttr})
+	infoHandler := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo, ReplaceAttr: replaceAttr})
 	multi := slog.NewMultiHandler(debugHandler, infoHandler)
 	logger := slog.New(multi)
 	return logger, f, nil
