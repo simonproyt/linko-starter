@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -12,14 +13,30 @@ import (
 
 	"log/slog"
 
+	pkgerr "github.com/pkg/errors"
+
 	"boot.dev/linko/internal/store"
 )
 
 func replaceAttr(groups []string, a slog.Attr) slog.Attr {
-	// Preserve time attribute and others unchanged
 	if a.Key == "err" || a.Key == "error" {
-		if err, ok := a.Value.Any().(error); ok {
-			return slog.String(a.Key, fmt.Sprintf("%+v", err))
+		if errVal, ok := a.Value.Any().(error); ok {
+			// stackTracer extracts pkg/errors stack traces
+			type stackTracer interface {
+				error
+				StackTrace() pkgerr.StackTrace
+			}
+			var st stackTracer
+			if errors.As(errVal, &st) {
+				return slog.GroupAttrs("error",
+					slog.Attr{Key: "message", Value: slog.StringValue(st.Error())},
+					slog.Attr{Key: "stack_trace", Value: slog.StringValue(fmt.Sprintf("%+v", st.StackTrace()))},
+				)
+			}
+			// Fallback to a grouped error with only message
+			return slog.GroupAttrs("error",
+				slog.Attr{Key: "message", Value: slog.StringValue(errVal.Error())},
+			)
 		}
 	}
 	return a
