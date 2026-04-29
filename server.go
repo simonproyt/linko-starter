@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 
 	"log/slog"
@@ -46,6 +47,8 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 	mux.Handle("/api/stats", wrapHandler(s.authMiddleware(http.HandlerFunc(s.handlerStats))))
 	mux.Handle("/api/urls", wrapHandler(s.authMiddleware(http.HandlerFunc(s.handlerListURLs))))
 	mux.Handle("/metrics", wrapHandler(promhttp.Handler()))
+	mux.Handle("/debug/pprof/", wrapHandler(s.authMiddleware(http.HandlerFunc(pprof.Index))))
+	mux.Handle("/debug/pprof/profile", wrapHandler(s.authMiddleware(http.HandlerFunc(pprof.Profile))))
 	mux.Handle("/admin/shutdown", wrapHandler(http.HandlerFunc(s.handlerShutdown)))
 
 	// Root: exact "/" serves index; anything else at root level is treated as a short code redirect.
