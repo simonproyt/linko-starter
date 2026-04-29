@@ -1,12 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
+
+	"go.opentelemetry.io/otel"
 )
 
-func checkDestination(targetURL string) error {
+func checkDestination(ctx context.Context, targetURL string) error {
+	ctx, span := otel.Tracer("linko").Start(ctx, "http.verify_destination")
+	defer span.End()
+
 	resp, err := http.DefaultClient.Get(targetURL)
 	if err != nil {
 		return fmt.Errorf("destination unreachable: %w", err)

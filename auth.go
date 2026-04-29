@@ -7,6 +7,8 @@ import (
 
 	"log/slog"
 
+	"go.opentelemetry.io/otel"
+
 	pkgerr "github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -53,6 +55,9 @@ var allowedUsers = map[string]string{
 
 func (s *server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := otel.Tracer("linko").Start(r.Context(), "auth.validate_password")
+		defer span.End()
+		r = r.WithContext(ctx)
 		username, password, ok := r.BasicAuth()
 		if !ok {
 			httpError(r.Context(), w, http.StatusUnauthorized, fmt.Errorf("unauthorized"))

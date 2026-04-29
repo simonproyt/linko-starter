@@ -13,6 +13,8 @@ import (
 
 	"log/slog"
 
+	"go.opentelemetry.io/otel"
+
 	"boot.dev/linko/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -37,6 +39,9 @@ func (s *server) handlerLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handlerShortenLink(w http.ResponseWriter, r *http.Request) {
+	ctx, span := otel.Tracer("linko").Start(r.Context(), "handler.shorten_link")
+	defer span.End()
+	r = r.WithContext(ctx)
 	user, ok := r.Context().Value(UserContextKey).(string)
 	if !ok || user == "" {
 		httpError(r.Context(), w, http.StatusUnauthorized, fmt.Errorf("unauthorized"))
@@ -53,7 +58,7 @@ func (s *server) handlerShortenLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Intentionally logging only the final success event to avoid redundant log entries
-	if err := checkDestination(longURL); err != nil {
+	if err := checkDestination(r.Context(), longURL); err != nil {
 		if lc := r.Context().Value(LogContextKey); lc != nil {
 			if logCtx, ok := lc.(*LogContext); ok {
 				logCtx.Error = err
@@ -103,7 +108,7 @@ func (s *server) handlerRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = bcrypt.GenerateFromPassword([]byte(longURL), bcrypt.DefaultCost)
-	if err := checkDestination(longURL); err != nil {
+	if err := checkDestination(r.Context(), longURL); err != nil {
 		if lc := r.Context().Value(LogContextKey); lc != nil {
 			if logCtx, ok := lc.(*LogContext); ok {
 				logCtx.Error = err
