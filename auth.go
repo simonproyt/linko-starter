@@ -14,6 +14,14 @@ type contextKey string
 
 const UserContextKey contextKey = "user"
 
+const LogContextKey contextKey = "log_context"
+
+// LogContext holds request-scoped fields that downstream handlers can set
+// for inclusion in the final request log.
+type LogContext struct {
+	Username string
+}
+
 var allowedUsers = map[string]string{
 	"frodo":   "$2a$10$B6O/n6teuCzpuh66jrUAdeaJ3WvXcxRkzpN0x7H.di9G9e/NGb9Me",
 	"samwise": "$2a$10$EWZpvYhUJtJcEMmm/IBOsOGIcpxUnGIVMRiDlN/nxl1RRwWGkJtty",
@@ -45,6 +53,13 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, username))
+		// if a LogContext exists on the request, populate its Username so
+		// requestLogger can include it in the final request log.
+		if lc := r.Context().Value(LogContextKey); lc != nil {
+			if logCtx, ok := lc.(*LogContext); ok {
+				logCtx.Username = username
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
 }

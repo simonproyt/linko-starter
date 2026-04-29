@@ -101,6 +101,10 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 
+			// create & attach a request-scoped LogContext for downstream handlers
+			logCtx := &LogContext{}
+			r = r.WithContext(context.WithValue(r.Context(), LogContextKey, logCtx))
+
 			// ensure non-nil body to simplify spying
 			if r.Body == nil {
 				r.Body = io.NopCloser(strings.NewReader(""))
@@ -118,7 +122,8 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 			}
 
 			if logger != nil {
-				logger.Info("Served request",
+				// build attrs so we can conditionally include username
+				attrs := []slog.Attr{
 					slog.String("method", r.Method),
 					slog.String("path", r.URL.Path),
 					slog.String("client_ip", r.RemoteAddr),
@@ -126,7 +131,15 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 					slog.Int("request_body_bytes", spyReader.bytesRead),
 					slog.Int("response_status", spyWriter.statusCode),
 					slog.Int("response_body_bytes", spyWriter.bytesWritten),
-				)
+				}
+				if logCtx != nil && logCtx.Username != "" {
+					attrs = append(attrs, slog.String("user", logCtx.Username))
+				}
+				anyArgs := make([]any, 0, len(attrs))
+				for _, a := range attrs {
+					anyArgs = append(anyArgs, a)
+				}
+				logger.Info("Served request", anyArgs...)
 			}
 		})
 	}
