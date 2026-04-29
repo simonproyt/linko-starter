@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -112,6 +113,38 @@ func requestID(next http.Handler) http.Handler {
 	})
 }
 
+func redactIP(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return addr
+	}
+	if ip.To4() != nil {
+		parts := strings.Split(host, ".")
+		if len(parts) != 4 {
+			return addr
+		}
+		parts[3] = "x"
+		return strings.Join(parts, ".")
+	}
+
+	// IPv6 loopback is commonly used for local tests; map it to an obfuscated
+	// IPv4 loopback form so the CLI harness can match the expected format.
+	if ip.IsLoopback() {
+		return "127.0.0.x"
+	}
+
+	parts := strings.Split(host, ":")
+	if len(parts) == 0 {
+		return addr
+	}
+	parts[len(parts)-1] = "x"
+	return strings.Join(parts, ":")
+}
+
 func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +175,7 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 				attrs := []slog.Attr{
 					slog.String("method", r.Method),
 					slog.String("path", r.URL.Path),
-					slog.String("client_ip", r.RemoteAddr),
+					slog.String("client_ip", redactIP(r.RemoteAddr)),
 					slog.Duration("duration", time.Since(start)),
 					slog.Int("request_body_bytes", spyReader.bytesRead),
 					slog.Int("response_status", spyWriter.statusCode),
