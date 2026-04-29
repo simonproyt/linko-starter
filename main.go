@@ -22,25 +22,39 @@ import (
 func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 	if a.Key == "err" || a.Key == "error" {
 		if errVal, ok := a.Value.Any().(error); ok {
-			// stackTracer extracts pkg/errors stack traces
+			// helper to build attrs for a single error
 			type stackTracer interface {
 				error
 				StackTrace() pkgerr.StackTrace
 			}
-			var st stackTracer
-			if errors.As(errVal, &st) {
-				attrs := []slog.Attr{
-					{Key: "message", Value: slog.StringValue(st.Error())},
-					{Key: "stack_trace", Value: slog.StringValue(fmt.Sprintf("%+v", st.StackTrace()))},
+
+			errorAttrs := func(err error) []slog.Attr {
+				attrs := []slog.Attr{{Key: "message", Value: slog.StringValue(err.Error())}}
+				// attach any linkoerr attributes (outermost first)
+				attrs = append(attrs, linkoerr.Attrs(err)...)
+				var st stackTracer
+				if errors.As(err, &st) {
+					attrs = append(attrs, slog.Attr{Key: "stack_trace", Value: slog.StringValue(fmt.Sprintf("%+v", st.StackTrace()))})
 				}
-				// include any attrs attached via linkoerr.WithAttrs
-				attrs = append(attrs, linkoerr.Attrs(errVal)...)
-				return slog.GroupAttrs("error", attrs...)
+				return attrs
 			}
-			// Fallback to a grouped error with message + any attached attrs
-			attrs := []slog.Attr{{Key: "message", Value: slog.StringValue(errVal.Error())}}
-			attrs = append(attrs, linkoerr.Attrs(errVal)...)
-			return slog.GroupAttrs("error", attrs...)
+
+			// detect joined/multi errors
+			type multiError interface {
+				error
+				Unwrap() []error
+			}
+			var me multiError
+			if errors.As(errVal, &me) {
+				var grouped []slog.Attr
+				for i, sub := range me.Unwrap() {
+					grouped = append(grouped, slog.GroupAttrs(fmt.Sprintf("error_%d", i+1), errorAttrs(sub)...))
+				}
+				return slog.GroupAttrs("errors", grouped...)
+			}
+
+			// single error -> grouped error object
+			return slog.GroupAttrs("error", errorAttrs(errVal)...)
 		}
 	}
 	return a
