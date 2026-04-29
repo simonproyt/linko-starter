@@ -16,6 +16,8 @@ import (
 
 	"log/slog"
 
+	"github.com/lmittmann/tint"
+	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
 
 	"boot.dev/linko/internal/build"
@@ -166,17 +168,18 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 
 func initializeLogger() (*slog.Logger, *os.File, error) {
 	logFile := os.Getenv("LINKO_LOG_FILE")
+	isTTY := isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())
 	if logFile == "" {
 		// only stderr: log DEBUG and above to stderr
-		debugHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
-		return slog.New(debugHandler), nil, nil
+		handler := tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug, NoColor: !isTTY})
+		return slog.New(handler), nil, nil
 	}
 	f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
 		return nil, nil, err
 	}
 	// stderr: DEBUG and above; file: INFO and above
-	debugHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug, ReplaceAttr: replaceAttr})
+	debugHandler := tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug, NoColor: !isTTY, ReplaceAttr: replaceAttr})
 	infoHandler := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo, ReplaceAttr: replaceAttr})
 	multi := slog.NewMultiHandler(debugHandler, infoHandler)
 	logger := slog.New(multi)
