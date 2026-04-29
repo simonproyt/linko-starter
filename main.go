@@ -112,10 +112,13 @@ func main() {
 		defer f.Close()
 	}
 
-	// attach build metadata to the logger
+	// attach build and instance metadata to the logger
+	hostname, _ := os.Hostname()
 	logger = logger.With(
 		slog.String("git_sha", build.GitSHA),
 		slog.String("build_time", build.BuildTime),
+		slog.String("env", os.Getenv("ENV")),
+		slog.String("hostname", hostname),
 	)
 
 	status := run(ctx, cancel, *httpPort, *dataDir, logger)
