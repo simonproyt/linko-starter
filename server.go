@@ -35,14 +35,18 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 		logger:     logger,
 	}
 
-	mux.Handle("/api/login", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerLogin))))
-	mux.Handle("/api/shorten", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerShortenLink))))
-	mux.Handle("/api/stats", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerStats))))
-	mux.Handle("/api/urls", requestLogger(s.logger)(s.authMiddleware(http.HandlerFunc(s.handlerListURLs))))
-	mux.HandleFunc("/admin/shutdown", s.handlerShutdown)
+	wrapHandler := func(h http.Handler) http.Handler {
+		return requestID(requestLogger(s.logger)(h))
+	}
+
+	mux.Handle("/api/login", wrapHandler(s.authMiddleware(http.HandlerFunc(s.handlerLogin))))
+	mux.Handle("/api/shorten", wrapHandler(s.authMiddleware(http.HandlerFunc(s.handlerShortenLink))))
+	mux.Handle("/api/stats", wrapHandler(s.authMiddleware(http.HandlerFunc(s.handlerStats))))
+	mux.Handle("/api/urls", wrapHandler(s.authMiddleware(http.HandlerFunc(s.handlerListURLs))))
+	mux.Handle("/admin/shutdown", wrapHandler(http.HandlerFunc(s.handlerShutdown)))
 
 	// Root: exact "/" serves index; anything else at root level is treated as a short code redirect.
-	mux.Handle("/", requestLogger(s.logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/", wrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			s.handlerIndex(w, r)
 			return

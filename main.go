@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -96,6 +97,18 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 	return a
 }
 
+func requestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = rand.Text()
+			r.Header.Set("X-Request-ID", requestID)
+		}
+		w.Header().Set("X-Request-ID", requestID)
+		next.ServeHTTP(w, r)
+	})
+}
+
 func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +150,9 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 				}
 				if logCtx != nil && logCtx.Error != nil {
 					attrs = append(attrs, slog.Any("error", logCtx.Error))
+				}
+				if requestID := r.Header.Get("X-Request-ID"); requestID != "" {
+					attrs = append(attrs, slog.String("request_id", requestID))
 				}
 				anyArgs := make([]any, 0, len(attrs))
 				for _, a := range attrs {
