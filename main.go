@@ -5,9 +5,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +21,39 @@ import (
 	"boot.dev/linko/internal/linkoerr"
 	"boot.dev/linko/internal/store"
 )
+
+// spyReadCloser wraps an io.ReadCloser and counts bytes read.
+type spyReadCloser struct {
+	io.ReadCloser
+	bytesRead int
+}
+
+func (s *spyReadCloser) Read(p []byte) (int, error) {
+	n, err := s.ReadCloser.Read(p)
+	s.bytesRead += n
+	return n, err
+}
+
+// spyResponseWriter wraps http.ResponseWriter and captures status and bytes written.
+type spyResponseWriter struct {
+	http.ResponseWriter
+	bytesWritten int
+	statusCode   int
+}
+
+func (w *spyResponseWriter) Write(p []byte) (int, error) {
+	if w.statusCode == 0 {
+		w.statusCode = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(p)
+	w.bytesWritten += n
+	return n, err
+}
+
+func (w *spyResponseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
 
 func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 	if a.Key == "err" || a.Key == "error" {
@@ -64,14 +99,35 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+
+			// ensure non-nil body to simplify spying
+			if r.Body == nil {
+				r.Body = io.NopCloser(strings.NewReader(""))
+			}
+			spyReader := &spyReadCloser{ReadCloser: r.Body}
+			r.Body = spyReader
+
+			spyWriter := &spyResponseWriter{ResponseWriter: w}
+
+			next.ServeHTTP(spyWriter, r)
+
+			// default status if none was written
+			if spyWriter.statusCode == 0 {
+				spyWriter.statusCode = http.StatusOK
+			}
+
 			if logger != nil {
 				logger.Info("Served request",
 					slog.String("method", r.Method),
 					slog.String("path", r.URL.Path),
 					slog.String("client_ip", r.RemoteAddr),
+					slog.Duration("duration", time.Since(start)),
+					slog.Int("request_body_bytes", spyReader.bytesRead),
+					slog.Int("response_status", spyWriter.statusCode),
+					slog.Int("response_body_bytes", spyWriter.bytesWritten),
 				)
 			}
-			next.ServeHTTP(w, r)
 		})
 	}
 }
