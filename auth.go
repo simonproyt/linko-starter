@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"log/slog"
 
@@ -26,7 +25,7 @@ type LogContext struct {
 }
 
 // httpError stashes err into the request's LogContext (if present) and sends
-// a lowercase response body derived from err.Error().
+// a safe response body for the client while preserving the full error for logs.
 func httpError(ctx context.Context, w http.ResponseWriter, status int, err error) {
 	if lc := ctx.Value(LogContextKey); lc != nil {
 		if logCtx, ok := lc.(*LogContext); ok {
@@ -35,8 +34,13 @@ func httpError(ctx context.Context, w http.ResponseWriter, status int, err error
 			}
 		}
 	}
-	// send a lowercase message in the response body
-	http.Error(w, strings.ToLower(err.Error()), status)
+
+	body := err.Error()
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError:
+		body = http.StatusText(status)
+	}
+	http.Error(w, body, status)
 }
 
 var allowedUsers = map[string]string{
