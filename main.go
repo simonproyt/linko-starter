@@ -19,6 +19,7 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"boot.dev/linko/internal/build"
 	"boot.dev/linko/internal/linkoerr"
@@ -166,7 +167,7 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 	}
 }
 
-func initializeLogger() (*slog.Logger, *os.File, error) {
+func initializeLogger() (*slog.Logger, io.Closer, error) {
 	logFile := os.Getenv("LINKO_LOG_FILE")
 	isTTY := isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())
 	if logFile == "" {
@@ -174,16 +175,20 @@ func initializeLogger() (*slog.Logger, *os.File, error) {
 		handler := tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug, NoColor: !isTTY})
 		return slog.New(handler), nil, nil
 	}
-	f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
-	if err != nil {
-		return nil, nil, err
+	loggerWriter := &lumberjack.Logger{
+		Filename:   logFile,
+		MaxSize:    1,
+		MaxAge:     28,
+		MaxBackups: 10,
+		LocalTime:  false,
+		Compress:   true,
 	}
 	// stderr: DEBUG and above; file: INFO and above
 	debugHandler := tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug, NoColor: !isTTY, ReplaceAttr: replaceAttr})
-	infoHandler := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo, ReplaceAttr: replaceAttr})
+	infoHandler := slog.NewJSONHandler(loggerWriter, &slog.HandlerOptions{Level: slog.LevelInfo, ReplaceAttr: replaceAttr})
 	multi := slog.NewMultiHandler(debugHandler, infoHandler)
 	logger := slog.New(multi)
-	return logger, f, nil
+	return logger, loggerWriter, nil
 }
 
 func main() {
@@ -194,13 +199,13 @@ func main() {
 	dataDir := flag.String("data", "./data", "directory to store data")
 	flag.Parse()
 
-	logger, f, err := initializeLogger()
+	logger, closer, err := initializeLogger()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
-	if f != nil {
-		defer f.Close()
+	if closer != nil {
+		defer closer.Close()
 	}
 
 	// attach build and instance metadata to the logger
