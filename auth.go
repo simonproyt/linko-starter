@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"log/slog"
 
@@ -20,6 +22,19 @@ const LogContextKey contextKey = "log_context"
 // for inclusion in the final request log.
 type LogContext struct {
 	Username string
+	Error    error
+}
+
+// httpError stashes err into the request's LogContext (if present) and sends
+// a lowercase response body derived from err.Error().
+func httpError(ctx context.Context, w http.ResponseWriter, status int, err error) {
+	if lc := ctx.Value(LogContextKey); lc != nil {
+		if logCtx, ok := lc.(*LogContext); ok {
+			logCtx.Error = err
+		}
+	}
+	// send a lowercase message in the response body
+	http.Error(w, strings.ToLower(err.Error()), status)
 }
 
 var allowedUsers = map[string]string{
@@ -34,22 +49,22 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			httpError(r.Context(), w, http.StatusUnauthorized, fmt.Errorf("unauthorized"))
 			return
 		}
 		stored, exists := allowedUsers[username]
 		if !exists {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			httpError(r.Context(), w, http.StatusUnauthorized, fmt.Errorf("unauthorized"))
 			return
 		}
 		ok, err := s.validatePassword(password, stored)
 		if err != nil {
 			s.logger.Error("error validating password", slog.String("user", username), slog.Any("error", err))
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			httpError(r.Context(), w, http.StatusInternalServerError, fmt.Errorf("internal server error"))
 			return
 		}
 		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			httpError(r.Context(), w, http.StatusUnauthorized, fmt.Errorf("unauthorized"))
 			return
 		}
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, username))
