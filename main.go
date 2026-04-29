@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -21,6 +22,8 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/exp/slices"
 	"gopkg.in/natefinch/lumberjack.v2"
 
@@ -61,6 +64,24 @@ func (w *spyResponseWriter) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
 	w.ResponseWriter.WriteHeader(statusCode)
 }
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+var httpRequestsTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "http_requests_total",
+		Help: "Total number of HTTP requests.",
+	},
+	[]string{"method", "path", "status"},
+)
 
 var sensitiveKeys = []string{"password", "key", "apikey", "secret", "pin", "creditcardno", "user"}
 
@@ -172,6 +193,23 @@ func redactIP(addr string) string {
 	}
 	parts[len(parts)-1] = "x"
 	return strings.Join(parts, ":")
+}
+
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder{
+			ResponseWriter: w,
+			status:         http.StatusOK,
+		}
+
+		next.ServeHTTP(rec, r)
+
+		httpRequestsTotal.WithLabelValues(
+			r.Method,
+			r.URL.Path,
+			strconv.Itoa(rec.status),
+		).Inc()
+	})
 }
 
 func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {

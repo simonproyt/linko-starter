@@ -38,7 +38,7 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 	}
 
 	wrapHandler := func(h http.Handler) http.Handler {
-		return requestID(requestLogger(s.logger)(h))
+		return requestID(requestLogger(s.logger)(metricsMiddleware(h)))
 	}
 
 	mux.Handle("/api/login", wrapHandler(s.authMiddleware(http.HandlerFunc(s.handlerLogin))))
