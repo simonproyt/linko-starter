@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
+	"golang.org/x/exp/slices"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"boot.dev/linko/internal/build"
@@ -60,7 +62,34 @@ func (w *spyResponseWriter) WriteHeader(statusCode int) {
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
+var sensitiveKeys = []string{"password", "key", "apikey", "secret", "pin", "creditcardno", "user"}
+
+func redactURLValue(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.User == nil {
+		return value
+	}
+	username := parsed.User.Username()
+	_, hasPassword := parsed.User.Password()
+	if username == "" || !hasPassword {
+		return value
+	}
+	parsed.User = url.UserPassword(username, "[REDACTED]")
+	return parsed.String()
+}
+
 func replaceAttr(groups []string, a slog.Attr) slog.Attr {
+	if slices.Contains(sensitiveKeys, a.Key) {
+		return slog.String(a.Key, "[REDACTED]")
+	}
+	if a.Value.Kind() == slog.KindString {
+		if str := a.Value.String(); str != "" {
+			redacted := redactURLValue(str)
+			if redacted != str {
+				return slog.String(a.Key, redacted)
+			}
+		}
+	}
 	if a.Key == "err" || a.Key == "error" {
 		if errVal, ok := a.Value.Any().(error); ok {
 			// helper to build attrs for a single error

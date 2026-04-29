@@ -34,7 +34,7 @@ func Test_requestLogger(t *testing.T) {
 	rr := httptest.NewRecorder()
 	loggedHandler.ServeHTTP(rr, req)
 
-	const expectedLogString = `time=2023-10-01T12:34:57.000Z level=INFO msg="Served request" method=GET path=/api/stats client_ip=192.0.2.x:1234 duration=0s request_body_bytes=0 response_status=200 response_body_bytes=0` + "\n"
+	const expectedLogString = `time=2023-10-01T12:34:57.000Z level=INFO msg="Served request" method=GET path=/api/stats client_ip=192.0.2.x duration=0s request_body_bytes=0 response_status=200 response_body_bytes=0` + "\n"
 	const expectedStatusCode = http.StatusOK
 
 	if got := logBuffer.String(); got != expectedLogString {
@@ -70,7 +70,7 @@ func Test_requestLogger_includesRequestID(t *testing.T) {
 	rr := httptest.NewRecorder()
 	loggedHandler.ServeHTTP(rr, req)
 
-	const expectedLogString = `time=2023-10-01T12:34:57.000Z level=INFO msg="Served request" method=GET path=/api/stats client_ip=192.0.2.x:1234 duration=0s request_body_bytes=0 response_status=200 response_body_bytes=0 request_id=req-123` + "\n"
+	const expectedLogString = `time=2023-10-01T12:34:57.000Z level=INFO msg="Served request" method=GET path=/api/stats client_ip=192.0.2.x duration=0s request_body_bytes=0 response_status=200 response_body_bytes=0 request_id=req-123` + "\n"
 
 	if got := logBuffer.String(); got != expectedLogString {
 		t.Errorf("unexpected log output:\n got: %q\nwant: %q", got, expectedLogString)
