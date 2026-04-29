@@ -15,6 +15,7 @@ import (
 
 	pkgerr "github.com/pkg/errors"
 
+	"boot.dev/linko/internal/build"
 	"boot.dev/linko/internal/linkoerr"
 	"boot.dev/linko/internal/store"
 )
@@ -110,6 +111,12 @@ func main() {
 	if f != nil {
 		defer f.Close()
 	}
+
+	// attach build metadata to the logger
+	logger = logger.With(
+		slog.String("git_sha", build.GitSHA),
+		slog.String("build_time", build.BuildTime),
+	)
 
 	status := run(ctx, cancel, *httpPort, *dataDir, logger)
 	logger.Debug("Linko is shutting down")
