@@ -135,6 +135,9 @@ func requestLogger(logger *slog.Logger) func(next http.Handler) http.Handler {
 				if logCtx != nil && logCtx.Username != "" {
 					attrs = append(attrs, slog.String("user", logCtx.Username))
 				}
+				if logCtx != nil && logCtx.Error != nil {
+					attrs = append(attrs, slog.Any("error", logCtx.Error))
+				}
 				anyArgs := make([]any, 0, len(attrs))
 				for _, a := range attrs {
 					anyArgs = append(anyArgs, a)

@@ -54,11 +54,21 @@ func (s *server) handlerShortenLink(w http.ResponseWriter, r *http.Request) {
 	}
 	// Intentionally logging only the final success event to avoid redundant log entries
 	if err := checkDestination(longURL); err != nil {
+		if lc := r.Context().Value(LogContextKey); lc != nil {
+			if logCtx, ok := lc.(*LogContext); ok {
+				logCtx.Error = err
+			}
+		}
 		httpError(r.Context(), w, http.StatusBadRequest, fmt.Errorf("invalid target url: %v", err))
 		return
 	}
 	shortCode, err := s.store.Create(r.Context(), longURL)
 	if err != nil {
+		if lc := r.Context().Value(LogContextKey); lc != nil {
+			if logCtx, ok := lc.(*LogContext); ok {
+				logCtx.Error = err
+			}
+		}
 		httpError(r.Context(), w, http.StatusInternalServerError, fmt.Errorf("failed to shorten url"))
 		return
 	}
@@ -82,12 +92,22 @@ func (s *server) handlerRedirect(w http.ResponseWriter, r *http.Request) {
 			s.logger.Error("failed to lookup URL",
 				slog.Any("error", err),
 			)
+			if lc := r.Context().Value(LogContextKey); lc != nil {
+				if logCtx, ok := lc.(*LogContext); ok {
+					logCtx.Error = err
+				}
+			}
 			httpError(r.Context(), w, http.StatusInternalServerError, fmt.Errorf("internal server error"))
 		}
 		return
 	}
 	_, _ = bcrypt.GenerateFromPassword([]byte(longURL), bcrypt.DefaultCost)
 	if err := checkDestination(longURL); err != nil {
+		if lc := r.Context().Value(LogContextKey); lc != nil {
+			if logCtx, ok := lc.(*LogContext); ok {
+				logCtx.Error = err
+			}
+		}
 		httpError(r.Context(), w, http.StatusBadGateway, fmt.Errorf("destination unavailable"))
 		return
 	}
@@ -106,6 +126,11 @@ func (s *server) handlerListURLs(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("failed to list URLs",
 			slog.Any("error", err),
 		)
+		if lc := r.Context().Value(LogContextKey); lc != nil {
+			if logCtx, ok := lc.(*LogContext); ok {
+				logCtx.Error = err
+			}
+		}
 		httpError(r.Context(), w, http.StatusInternalServerError, fmt.Errorf("failed to list urls"))
 		return
 	}

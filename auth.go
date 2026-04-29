@@ -30,7 +30,9 @@ type LogContext struct {
 func httpError(ctx context.Context, w http.ResponseWriter, status int, err error) {
 	if lc := ctx.Value(LogContextKey); lc != nil {
 		if logCtx, ok := lc.(*LogContext); ok {
-			logCtx.Error = err
+			if logCtx.Error == nil {
+				logCtx.Error = err
+			}
 		}
 	}
 	// send a lowercase message in the response body
@@ -59,6 +61,12 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 		}
 		ok, err := s.validatePassword(password, stored)
 		if err != nil {
+			// stash the original error so requestLogger can include stack trace
+			if lc := r.Context().Value(LogContextKey); lc != nil {
+				if logCtx, ok := lc.(*LogContext); ok {
+					logCtx.Error = err
+				}
+			}
 			s.logger.Error("error validating password", slog.String("user", username), slog.Any("error", err))
 			httpError(r.Context(), w, http.StatusInternalServerError, fmt.Errorf("internal server error"))
 			return
